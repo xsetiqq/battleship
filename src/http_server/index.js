@@ -10,14 +10,12 @@ let nextRoomId = 1;
 
 function getShipPositions(ship) {
   const positions = [];
-
   for (let i = 0; i < ship.length; i++) {
     positions.push({
-      x: ship.direction ? ship.position.x + i : ship.position.x,
-      y: ship.direction ? ship.position.y : ship.position.y + i,
+      x: ship.direction ? ship.position.x : ship.position.x + i,
+      y: ship.direction ? ship.position.y + i : ship.position.y,
     });
   }
-
   return positions;
 }
 
@@ -280,17 +278,6 @@ wss.on("connection", (ws) => {
       if (alreadyHit) return console.warn("⛔ Already attacked");
 
       room.hits[indexPlayer].push({ x, y });
-
-      function getShipPositions(ship) {
-        const pos = [];
-        for (let i = 0; i < ship.length; i++) {
-          pos.push({
-            x: ship.direction ? ship.position.x + i : ship.position.x,
-            y: ship.direction ? ship.position.y : ship.position.y + i,
-          });
-        }
-        return pos;
-      }
 
       const enemyShips = room.ships[enemy.index];
       let status = "miss";
