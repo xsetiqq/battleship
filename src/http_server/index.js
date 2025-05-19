@@ -211,23 +211,19 @@ wss.on("connection", (ws) => {
       const { gameId, ships, indexPlayer } = data;
 
       const room = rooms.find((r) => r.roomId === Number(gameId));
-      if (!room) return console.error("❌ Room not found:", gameId);
+      if (!room) return console.error("Room not found:", gameId);
 
-      // Инициализация структур
       room.ships = room.ships || {};
       room.hits = room.hits || {};
       room.killed = room.killed || {};
 
-      // Сохраняем корабли игрока
       room.ships[indexPlayer] = ships;
 
-      // Проверка: оба ли игрока отправили корабли
       const bothReady = room.roomUsers.every(
         (player) => room.ships[player.index]
       );
 
       if (bothReady) {
-        // Случайно выбираем, кто ходит первым
         const current = room.roomUsers[Math.floor(Math.random() * 2)].index;
         room.currentTurn = current;
 
@@ -240,7 +236,7 @@ wss.on("connection", (ws) => {
               JSON.stringify({
                 type: "start_game",
                 data: JSON.stringify({
-                  ships: room.ships[player.index], // свои корабли
+                  ships: room.ships[player.index],
                   currentPlayerIndex: current,
                 }),
                 id: 0,
@@ -262,10 +258,10 @@ wss.on("connection", (ws) => {
       if (!room) return console.error("❌ Room not found");
 
       if (room.currentTurn !== indexPlayer)
-        return console.warn("⏳ Not player's turn");
+        return console.warn("Not player's turn");
 
       const enemy = room.roomUsers.find((p) => p.index !== indexPlayer);
-      if (!enemy) return console.error("❌ Enemy not found");
+      if (!enemy) return console.error("Enemy not found");
 
       room.hits = room.hits || {};
       room.killed = room.killed || {};
@@ -275,7 +271,7 @@ wss.on("connection", (ws) => {
       const alreadyHit = room.hits[indexPlayer].some(
         (h) => h.x === x && h.y === y
       );
-      if (alreadyHit) return console.warn("⛔ Already attacked");
+      if (alreadyHit) return console.warn("Already attacked");
 
       room.hits[indexPlayer].push({ x, y });
 
@@ -292,7 +288,39 @@ wss.on("connection", (ws) => {
 
           if (isShipKilled(ship, room.hits[indexPlayer])) {
             status = "killed";
-            room.killed[indexPlayer].push(...getShipPositions(ship));
+            const killedCells = getShipPositions(ship);
+            room.killed[indexPlayer].push(...killedCells);
+
+            killedCells.forEach((cell) => {
+              const killMsg = {
+                type: "attack",
+                data: JSON.stringify({
+                  position: cell,
+                  currentPlayer: indexPlayer,
+                  status: "killed",
+                }),
+                id: 0,
+              };
+              const killStr = JSON.stringify(killMsg);
+              wss.clients.forEach((client) => {
+                if (client.readyState === 1) client.send(killStr);
+              });
+            });
+          }
+          if (status !== "killed") {
+            const response = {
+              type: "attack",
+              data: JSON.stringify({
+                position: { x, y },
+                currentPlayer: indexPlayer,
+                status: status,
+              }),
+              id: 0,
+            };
+            const str = JSON.stringify(response);
+            wss.clients.forEach((client) => {
+              if (client.readyState === 1) client.send(str);
+            });
           }
 
           break;
@@ -314,7 +342,6 @@ wss.on("connection", (ws) => {
         if (client.readyState === 1) client.send(str);
       });
 
-      // Смена хода
       if (status === "miss") {
         room.currentTurn = enemy.index;
         const turnUpdate = {
@@ -329,7 +356,6 @@ wss.on("connection", (ws) => {
         });
       }
 
-      // Проверка победы
       const allEnemyCells = enemyShips.flatMap(getShipPositions);
       const killed = room.killed[indexPlayer].map((p) => `${p.x},${p.y}`);
       const won = allEnemyCells.every((p) => killed.includes(`${p.x},${p.y}`));
@@ -355,11 +381,98 @@ wss.on("connection", (ws) => {
           ),
           id: 0,
         };
-
         const winnersStr = JSON.stringify(updateWinners);
         wss.clients.forEach((client) => {
           if (client.readyState === 1) client.send(winnersStr);
         });
+      }
+    }
+    if (parsed.type === "randomAttack") {
+      const data =
+        typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+      const { gameId, indexPlayer } = data;
+
+      const room = rooms.find((r) => r.roomId === Number(gameId));
+      if (!room) return console.error("room not found for randomAttack");
+
+      const enemy = room.roomUsers.find((p) => p.index !== indexPlayer);
+      if (!enemy) return console.error("enemy not found");
+
+      const alreadyHit = room.hits[indexPlayer] || [];
+      const tried = new Set(alreadyHit.map((h) => `${h.x},${h.y}`));
+
+      let x = -1,
+        y = -1,
+        attempts = 0;
+      do {
+        x = Math.floor(Math.random() * 10);
+        y = Math.floor(Math.random() * 10);
+        attempts++;
+        if (attempts > 100)
+          return console.error("Too many attempts to find free cell");
+      } while (tried.has(`${x},${y}`));
+
+      const fakeAttack = {
+        type: "attack",
+        data: JSON.stringify({ gameId, x, y, indexPlayer }),
+        id: 0,
+      };
+
+      ws.emit("message", JSON.stringify(fakeAttack));
+    }
+
+    if (parsed.type === "add_ships") {
+      const data =
+        typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+      const { gameId, ships, indexPlayer } = data;
+
+      const room = rooms.find((r) => r.roomId === Number(gameId));
+      if (!room) return console.error("Room not found:", gameId);
+
+      room.ships = room.ships || {};
+      room.hits = room.hits || {};
+      room.killed = room.killed || {};
+
+      room.ships[indexPlayer] = ships;
+
+      const bothReady = room.roomUsers.every(
+        (player) =>
+          Array.isArray(room.ships[player.index]) &&
+          room.ships[player.index].length > 0
+      );
+
+      if (bothReady) {
+        const current = room.roomUsers[Math.floor(Math.random() * 2)].index;
+        room.currentTurn = current;
+
+        room.roomUsers.forEach((player) => {
+          const client = [...wss.clients].find(
+            (c) => c.username === player.name
+          );
+          if (client && client.readyState === 1) {
+            client.send(
+              JSON.stringify({
+                type: "start_game",
+                data: JSON.stringify({
+                  ships: room.ships[player.index],
+                  currentPlayerIndex: current,
+                }),
+                id: 0,
+              })
+            );
+          }
+        });
+
+        console.log(`🚀 Game ${gameId} started. First turn: ${current}`);
+
+        if (current === "Bot") {
+          const fakeBotMove = {
+            type: "randomAttack",
+            data: JSON.stringify({ gameId, indexPlayer: "Bot" }),
+            id: 0,
+          };
+          ws.emit("message", JSON.stringify(fakeBotMove));
+        }
       }
     }
   });
