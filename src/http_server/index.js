@@ -82,12 +82,12 @@ wss.on("connection", (ws) => {
           return ws.send(
             JSON.stringify({
               type: "reg",
-              data: JSON.stringify({
+              data: {
                 name,
                 index: null,
                 error: true,
                 errorText: "Wrong password",
-              }),
+              },
               id: 0,
             })
           );
@@ -314,11 +314,11 @@ wss.on("connection", (ws) => {
 
       const response = {
         type: "attack",
-        data: {
+        data: JSON.stringify({
           position: { x, y },
           currentPlayer: indexPlayer,
           status: status,
-        },
+        }),
         id: 0,
       };
 
@@ -332,7 +332,7 @@ wss.on("connection", (ws) => {
         room.currentTurn = enemy.index;
         const turnUpdate = {
           type: "turn",
-          data: { currentPlayer: room.currentTurn },
+          data: JSON.stringify({ currentPlayer: room.currentTurn }),
           id: 0,
         };
 
@@ -350,7 +350,7 @@ wss.on("connection", (ws) => {
       if (won) {
         const winMsg = {
           type: "finish",
-          data: { winPlayer: indexPlayer },
+          data: JSON.stringify({ winPlayer: indexPlayer }),
           id: 0,
         };
         const winStr = JSON.stringify(winMsg);
@@ -363,7 +363,9 @@ wss.on("connection", (ws) => {
 
         const updateWinners = {
           type: "update_winners",
-          data: users.map((u) => ({ name: u.name, wins: u.wins })),
+          data: JSON.stringify(
+            users.map((u) => ({ name: u.name, wins: u.wins }))
+          ),
           id: 0,
         };
 
