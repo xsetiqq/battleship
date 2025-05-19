@@ -245,7 +245,7 @@ wss.on("connection", (ws) => {
           }
         });
 
-        console.log(`🎯 Game ${gameId} started. First move: ${current}`);
+        console.log(`Game ${gameId} started. First move: ${current}`);
       }
     }
 
@@ -463,7 +463,7 @@ wss.on("connection", (ws) => {
           }
         });
 
-        console.log(`🚀 Game ${gameId} started. First turn: ${current}`);
+        console.log(`Game ${gameId} started. First turn: ${current}`);
 
         if (current === "Bot") {
           const fakeBotMove = {
@@ -474,6 +474,46 @@ wss.on("connection", (ws) => {
           ws.emit("message", JSON.stringify(fakeBotMove));
         }
       }
+    }
+
+    if (parsed.type === "single_play") {
+      const username = ws.username;
+      if (!username) return;
+
+      let botUser = users.find((u) => u.name === "Bot");
+      if (!botUser) {
+        botUser = { name: "Bot", password: "123", wins: 0 };
+        users.push(botUser);
+      }
+
+      const roomId = nextRoomId++;
+      const room = {
+        roomId,
+        roomUsers: [
+          { name: username, index: username },
+          { name: "Bot", index: "Bot" },
+        ],
+      };
+      rooms.push(room);
+
+      room.roomUsers.forEach((player) => {
+        const client =
+          [...wss.clients].find((c) => c.username === player.name) || ws;
+        if (client && client.readyState === 1) {
+          client.send(
+            JSON.stringify({
+              type: "create_game",
+              data: JSON.stringify({
+                idGame: roomId,
+                idPlayer: player.index,
+              }),
+              id: 0,
+            })
+          );
+        }
+      });
+
+      console.log(`Single player game started: ${roomId}`);
     }
   });
 
